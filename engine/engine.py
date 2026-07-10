@@ -190,7 +190,7 @@ class TriageEngine:
                            ("DELIVERABLE SPEC (output format)", path.deliverable_spec)):
             if not rel:
                 continue
-            f = Path(rel)
+            f = self.config.resolve_path(rel)
             if f.exists():
                 out.append(f"\n--- {label} — from {rel} ---\n{f.read_text(encoding='utf-8')}\n")
             else:

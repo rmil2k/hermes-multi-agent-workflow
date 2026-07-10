@@ -8,6 +8,8 @@ Requires PyYAML (engine.config imports it). See requirements.txt.
 """
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
 from pathlib import Path
 import sys
@@ -77,6 +79,31 @@ class TestConfig(unittest.TestCase):
     def test_unreachable_threshold_rejected(self):
         with self.assertRaises(ConfigError):
             make_config(rubric={"threshold": 999, "dimensions": [{"key": "a", "max": 10}]})
+
+    def test_loaded_config_resolves_paths_relative_to_config_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            rails = root / "paths" / "rails"
+            rails.mkdir(parents=True)
+            (rails / "build.md").write_text("ROOT-RELATIVE RAILS", encoding="utf-8")
+
+            cfg_data = make_config().raw
+            cfg_data["paths"]["build"]["scope_rails"] = "paths/rails/build.md"
+            cfg_file = root / "triage.yaml"
+            import yaml
+            cfg_file.write_text(yaml.safe_dump(cfg_data), encoding="utf-8")
+
+            old_cwd = Path.cwd()
+            other_cwd = root / "elsewhere"
+            other_cwd.mkdir()
+            try:
+                os.chdir(other_cwd)
+                cfg = TriageConfig.load(cfg_file)
+                self.assertEqual(cfg.resolve_path("paths/rails/build.md"), rails / "build.md")
+                body = TriageEngine(cfg).fulfillment_specs("slug", "build")[0].body
+                self.assertIn("ROOT-RELATIVE RAILS", body)
+            finally:
+                os.chdir(old_cwd)
 
 
 class TestScoring(unittest.TestCase):

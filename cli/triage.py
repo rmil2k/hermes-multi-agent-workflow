@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from engine.config import ConfigError, TriageConfig
 
@@ -45,10 +44,10 @@ def cmd_validate(args: argparse.Namespace) -> int:
     missing = []
     for p in cfg.paths.values():
         for rel in (p.scope_rails, p.deliverable_spec, p.proposal_template):
-            if rel and not Path(rel).exists():
+            if rel and not cfg.resolve_path(rel).exists():
                 missing.append(rel)
     if missing:
-        print("  ! referenced template files not found (relative to CWD; fill them in or run from repo root):")
+        print("  ! referenced template files not found (relative to triage.yaml; fill them in):")
         for m in sorted(set(missing)):
             print(f"      - {m}")
     return 0

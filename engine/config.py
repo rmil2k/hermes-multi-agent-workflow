@@ -126,6 +126,7 @@ class TriageConfig:
     roles: dict[str, str]
     gate: Gate
     raw: dict[str, Any] = field(default_factory=dict)
+    base_dir: Path = field(default_factory=lambda: Path.cwd())
 
     # ----- convenience lookups the engine and proposal_actions use ----- #
 
@@ -142,13 +143,23 @@ class TriageConfig:
             raise ConfigError(f"Path {name!r} is referenced but not defined under `paths:`.")
         return self.paths[name]
 
+    def resolve_path(self, path: str | Path) -> Path:
+        """Resolve a config-declared path relative to the loaded triage.yaml."""
+        p = Path(path)
+        if p.is_absolute():
+            return p
+        return self.base_dir / p
+
     @classmethod
     def load(cls, path: str | Path = "triage.yaml") -> "TriageConfig":
         p = Path(path)
         if not p.exists():
             raise ConfigError(f"Config not found: {p}. Copy and edit the example triage.yaml.")
-        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        return cls.from_dict(data)
+        resolved = p.resolve()
+        data = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
+        cfg = cls.from_dict(data)
+        cfg.base_dir = resolved.parent
+        return cfg
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TriageConfig":
