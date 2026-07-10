@@ -38,11 +38,14 @@ lives in one file, `triage.yaml`.
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt          # just PyYAML
-python -m cli.triage validate            # check the example config
+python -m pip install -e .               # installs the hermes-triage CLI
+hermes-triage validate                   # check the example config
 python -m unittest discover -s tests     # 12 tests, all generic
-python -m cli.triage scaffold            # print the Hermes setup plan
+hermes-triage scaffold                   # print the Hermes setup plan
 ```
+
+For old-style usage without installing the package, `python -m cli.triage ...`
+still works. The runtime dependency is intentionally small: just PyYAML.
 
 ## Adapt it to your domain
 

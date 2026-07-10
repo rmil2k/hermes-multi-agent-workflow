@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-multi-agent-workflow"
+version = "0.1.0"
+description = "Reusable Hermes multi-agent triage workflow skeleton."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "tonbistudio" },
+]
+keywords = ["hermes", "agents", "multi-agent", "triage", "workflow"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff>=0.8.0",
+]
+
+[project.scripts]
+hermes-triage = "cli.triage:main"
+
+[project.urls]
+Homepage = "https://github.com/tonbistudio/hermes-multi-agent-workflow"
+Repository = "https://github.com/tonbistudio/hermes-multi-agent-workflow"
+Issues = "https://github.com/tonbistudio/hermes-multi-agent-workflow/issues"
+
+[tool.setuptools]
+packages = ["cli", "engine"]
+py-modules = ["proposal_actions"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Keep CI lint focused on correctness for now. This template predates formatting
+# enforcement, so style cleanup should happen separately from packaging/CI.
+select = ["E9", "F63", "F7", "F82"]
