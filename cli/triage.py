@@ -65,7 +65,7 @@ def scaffold_commands(cfg: TriageConfig, *, base_profile: str = "default", pause
     """Build the Hermes CLI commands needed to scaffold this pipeline."""
     commands: list[list[str]] = [["hermes", "kanban", "boards", "create", cfg.board]]
     profiles = sorted(set(cfg.roles.values()) | {s.profile for s in cfg.sources})
-    commands.extend(["hermes", "profile", "create", prof, "--from", base_profile] for prof in profiles)
+    commands.extend(["hermes", "profile", "create", prof, "--clone-from", base_profile] for prof in profiles)
     commands.append(["hermes", "skills", "install", "skills/templates/triage-orchestrator", "--profile", cfg.roles.get("orchestrator", "orchestrator")])
     for source in cfg.sources:
         commands.append(["hermes", "skills", "install", f"skills/templates/{source.skill}", "--profile", source.profile])

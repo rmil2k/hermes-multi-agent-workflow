@@ -27,7 +27,7 @@ One profile per distinct value in `roles:` plus each `sources[].profile`. Clone
 from a base profile, then set the model in each profile's `config.yaml`.
 
 ```bash
-hermes profile create <name> --from <base>
+hermes profile create <name> --clone-from <base>
 # edit ~/.hermes/profiles/<name>/config.yaml → model: block (provider + model)
 ```
 

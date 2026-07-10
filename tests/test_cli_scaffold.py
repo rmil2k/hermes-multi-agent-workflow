@@ -47,7 +47,7 @@ class TestScaffold(unittest.TestCase):
         rendered = [" ".join(cmd) for cmd in commands]
 
         self.assertIn("hermes kanban boards create test-board", rendered)
-        self.assertIn("hermes profile create orchestrator --from base", rendered)
+        self.assertIn("hermes profile create orchestrator --clone-from base", rendered)
         self.assertIn("hermes cron pause all", rendered)
         self.assertFalse(any("TODO" in line for line in rendered))
 
@@ -105,7 +105,7 @@ class TestScaffold(unittest.TestCase):
             self.assertIn(("hermes", "kanban", "boards", "list"), runner.calls)
             self.assertIn(("hermes", "profile", "list"), runner.calls)
             self.assertNotIn(("hermes", "kanban", "boards", "create", "test-board"), runner.calls)
-            self.assertNotIn(("hermes", "profile", "create", "orchestrator", "--from", "base"), runner.calls)
+            self.assertNotIn(("hermes", "profile", "create", "orchestrator", "--clone-from", "base"), runner.calls)
             self.assertIn(("hermes", "cron", "pause", "all"), runner.calls)
             self.assertIn("Skipping existing board", out.getvalue())
 
