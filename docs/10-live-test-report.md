@@ -15,6 +15,27 @@
   - global `--profile` goes before `cron`, not inside `cron create`
 - Hardened scout skill instructions to use `/opt/hermes/bin/hermes kanban --board pain-point create ...`.
 
+## Live cron configuration
+
+The profile-local scout crons were paused because profile gateways were not running, so they would not fire automatically. Reliable wrapper crons were installed in the default profile, whose gateway is already running.
+
+Active default-gateway wrapper jobs:
+
+- `52898226013b` — `triage-scout-web-wrapper`, schedule `45 * * * *`, script `triage_scout_web.sh`
+- `e956bcd7337f` — `triage-scout-x-wrapper`, schedule `15 * * * *`, script `triage_scout_x.sh`
+
+Wrapper scripts live under `/opt/data/scripts/` and invoke the scout profiles explicitly:
+
+```bash
+/opt/hermes/bin/hermes --profile webresearch --skills triage-scout-web chat -q "Run one web scout sweep now..."
+/opt/hermes/bin/hermes --profile xresearch --skills triage-scout-x chat -q "Run one X scout sweep now..."
+```
+
+Paused profile-local jobs retained for reference:
+
+- `1b4c90435f43` — `triage-scout-web` in profile `webresearch`
+- `283215ef4396` — `triage-scout-x` in profile `xresearch`
+
 ## Manual live run
 
 Command run:
