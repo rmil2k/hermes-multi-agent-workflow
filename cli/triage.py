@@ -221,13 +221,15 @@ def vault_for_config(cfg: TriageConfig, *, smoke: bool = False) -> ItemVault:
     return ItemVault(root / "vault" / "items")
 
 
-def cmd_item_list(config_path: str | Path = "triage.yaml") -> int:
+def cmd_item_list(config_path: str | Path = "triage.yaml", *, smoke: bool = False) -> int:
     try:
         cfg = TriageConfig.load(config_path)
     except ConfigError as exc:
         print(f"[FAIL] config - {exc}")
         return 1
-    vault = vault_for_config(cfg, smoke=True)
+    vault = vault_for_config(cfg, smoke=smoke)
+    label = "smoke" if smoke else "live"
+    print(f"# {label} item vault: {vault.root}")
     print("slug\tstatus\tpath\tscore\ttitle")
     for path in sorted(vault.root.glob("*.md")):
         item = vault.load(path.stem)
@@ -236,10 +238,10 @@ def cmd_item_list(config_path: str | Path = "triage.yaml") -> int:
     return 0
 
 
-def cmd_item_show(config_path: str | Path, slug: str) -> int:
+def cmd_item_show(config_path: str | Path, slug: str, *, smoke: bool = False) -> int:
     try:
         cfg = TriageConfig.load(config_path)
-        vault = vault_for_config(cfg, smoke=True)
+        vault = vault_for_config(cfg, smoke=smoke)
         item = vault.load(slug)
     except (ConfigError, FileNotFoundError, ValueError) as exc:
         print(f"[FAIL] item - {exc}")
@@ -261,9 +263,9 @@ def cmd_item_show(config_path: str | Path, slug: str) -> int:
 
 def cmd_item_from_args(args: argparse.Namespace) -> int:
     if args.item_command == "list":
-        return cmd_item_list(args.config)
+        return cmd_item_list(args.config, smoke=args.smoke)
     if args.item_command == "show":
-        return cmd_item_show(args.config, args.slug)
+        return cmd_item_show(args.config, args.slug, smoke=args.smoke)
     print("[FAIL] item - expected subcommand: list or show")
     return 1
 
@@ -387,9 +389,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("smoke-test", help="Simulate one item lifecycle locally without live Hermes agents.").set_defaults(func=cmd_smoke_test_from_args)
     item = sub.add_parser("item", help="Inspect local item vault records.")
     item_sub = item.add_subparsers(dest="item_command", required=True)
-    item_sub.add_parser("list", help="List smoke-test item records.")
-    item_show = item_sub.add_parser("show", help="Show one smoke-test item record.")
+    item_list = item_sub.add_parser("list", help="List item records from the live vault by default.")
+    item_list.add_argument("--smoke", action="store_true", help="Read from the smoke-test vault instead of the live vault.")
+    item_show = item_sub.add_parser("show", help="Show one item record from the live vault by default.")
     item_show.add_argument("slug")
+    item_show.add_argument("--smoke", action="store_true", help="Read from the smoke-test vault instead of the live vault.")
     item.set_defaults(func=cmd_item_from_args)
     sub.add_parser("init", help="(stub) Start a new project.").set_defaults(func=cmd_stub("init"))
     sub.add_parser("install", help="(stub) Execute the scaffold plan.").set_defaults(func=cmd_stub("install"))

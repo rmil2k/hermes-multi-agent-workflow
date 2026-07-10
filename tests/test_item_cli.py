@@ -46,9 +46,15 @@ class TestItemEventsAndCli(unittest.TestCase):
             with redirect_stdout(smoke_output):
                 self.assertEqual(cmd_smoke_test(config), 0)
 
+            default_listing = StringIO()
+            with redirect_stdout(default_listing):
+                rc = cmd_item_list(config)
+            self.assertEqual(rc, 0)
+            self.assertNotIn("smoke-agent-workflow-pain", default_listing.getvalue())
+
             listing = StringIO()
             with redirect_stdout(listing):
-                rc = cmd_item_list(config)
+                rc = cmd_item_list(config, smoke=True)
             self.assertEqual(rc, 0)
             list_text = listing.getvalue()
             self.assertIn("smoke-agent-workflow-pain", list_text)
@@ -57,7 +63,7 @@ class TestItemEventsAndCli(unittest.TestCase):
 
             detail = StringIO()
             with redirect_stdout(detail):
-                rc = cmd_item_show(config, "smoke-agent-workflow-pain")
+                rc = cmd_item_show(config, "smoke-agent-workflow-pain", smoke=True)
             self.assertEqual(rc, 0)
             detail_text = detail.getvalue()
             self.assertIn("Agent users lose hours", detail_text)
