@@ -21,9 +21,14 @@ Wire them up to your environment as you adopt the template.
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
+from pathlib import Path
+from typing import Callable
 
 from engine.config import ConfigError, TriageConfig
+
+Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -81,6 +86,106 @@ def cmd_scaffold(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_command(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, **kwargs)
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+
+def names_from_lines(output: str) -> set[str]:
+    names: set[str] = set()
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "-")):
+            continue
+        names.add(stripped.split()[0])
+    return names
+
+
+def local_template_warnings(cfg: TriageConfig) -> list[str]:
+    missing: list[str] = []
+    for path_def in cfg.paths.values():
+        for rel in (path_def.scope_rails, path_def.deliverable_spec, path_def.proposal_template):
+            if rel and not cfg.resolve_path(rel).exists():
+                missing.append(rel)
+    return sorted(set(missing))
+
+
+def cmd_doctor(config_path: str | Path = "triage.yaml", *, runner: Runner = run_command) -> int:
+    """Check whether the local Hermes environment looks ready for this pipeline."""
+    failures = 0
+    warnings = 0
+
+    try:
+        cfg = TriageConfig.load(config_path)
+        print(f"[OK] triage.yaml - pipeline {cfg.name!r} is valid")
+    except ConfigError as exc:
+        print(f"[FAIL] triage.yaml - {exc}")
+        return 1
+
+    missing_templates = local_template_warnings(cfg)
+    if missing_templates:
+        warnings += 1
+        print("[WARN] templates - referenced files missing relative to triage.yaml:")
+        for rel in missing_templates:
+            print(f"       - {rel}")
+    else:
+        print("[OK] templates - all referenced local files exist")
+
+    hermes = runner(["hermes", "--version"])
+    if hermes.returncode != 0:
+        failures += 1
+        detail = (hermes.stderr or hermes.stdout or "command failed").strip()
+        print(f"[FAIL] Hermes CLI - cannot run `hermes --version`: {detail}")
+        print(f"\nSummary: {failures} failure(s), {warnings} warning(s)")
+        return 1
+    version = (hermes.stdout or hermes.stderr).strip().splitlines()[0]
+    print(f"[OK] Hermes CLI - {version}")
+
+    board_result = runner(["hermes", "kanban", "boards", "list"])
+    if board_result.returncode != 0:
+        failures += 1
+        detail = (board_result.stderr or board_result.stdout or "command failed").strip()
+        print(f"[FAIL] board - could not list boards: {detail}")
+    else:
+        boards = names_from_lines(board_result.stdout)
+        if cfg.board in boards:
+            print(f"[OK] board - {cfg.board!r} exists")
+        else:
+            failures += 1
+            print(f"[FAIL] board - {cfg.board!r} not found; create it with `hermes kanban boards create {cfg.board}`")
+
+    profile_result = runner(["hermes", "profile", "list"])
+    required_profiles = sorted(set(cfg.roles.values()) | {s.profile for s in cfg.sources})
+    if profile_result.returncode != 0:
+        failures += 1
+        detail = (profile_result.stderr or profile_result.stdout or "command failed").strip()
+        print(f"[FAIL] profiles - could not list profiles: {detail}")
+    else:
+        profiles = names_from_lines(profile_result.stdout)
+        missing = [p for p in required_profiles if p not in profiles]
+        if missing:
+            failures += 1
+            print("[FAIL] profiles - missing required Hermes profiles:")
+            for prof in missing:
+                print(f"       - {prof}")
+        else:
+            print(f"[OK] profiles - all {len(required_profiles)} required profiles exist")
+
+    if cfg.sources:
+        print("[INFO] scout profiles must include the `kanban` toolset:")
+        for source in cfg.sources:
+            print(f"       - {source.profile} for source {source.id!r}")
+
+    print(f"\nSummary: {failures} failure(s), {warnings} warning(s)")
+    return 1 if failures else 0
+
+
+def cmd_doctor_from_args(args: argparse.Namespace) -> int:
+    return cmd_doctor(args.config)
+
+
 def cmd_stub(name: str):
     def run(args: argparse.Namespace) -> int:
         print(f"`{name}` is a stub in this template. See `python -m cli.triage scaffold` for the plan, "
@@ -95,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate triage.yaml.").set_defaults(func=cmd_validate)
     sub.add_parser("scaffold", help="Print the setup plan from triage.yaml.").set_defaults(func=cmd_scaffold)
+    sub.add_parser("doctor", help="Check local Hermes readiness for this pipeline.").set_defaults(func=cmd_doctor_from_args)
     sub.add_parser("init", help="(stub) Start a new project.").set_defaults(func=cmd_stub("init"))
     sub.add_parser("install", help="(stub) Execute the scaffold plan.").set_defaults(func=cmd_stub("install"))
     args = parser.parse_args(argv)
