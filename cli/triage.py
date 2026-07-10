@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Callable
 
 from engine.config import ConfigError, TriageConfig
+from engine.engine import TriageEngine
+from engine.item_vault import ItemVault
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -186,6 +188,124 @@ def cmd_doctor_from_args(args: argparse.Namespace) -> int:
     return cmd_doctor(args.config)
 
 
+def smoke_candidate() -> dict:
+    return {
+        "slug": "smoke-agent-workflow-pain",
+        "title": "Agent users lose hours when workflows break silently",
+        "claim": "Users report broken agent workflows, wasted hours, and blocked work.",
+        "sources": [
+            {"url": "https://example.com/source-1", "title": "Smoke source 1"},
+            {"url": "https://example.com/source-2", "title": "Smoke source 2"},
+            {"url": "https://example.com/source-3", "title": "Smoke source 3"},
+            {"url": "https://example.com/source-4", "title": "Smoke source 4"},
+        ],
+        "why_it_may_matter": "Concrete pain: wasted hours, gave up, blocked teams.",
+        "agent_solvable_or_explainable": "yes",
+        "solution_gap": "missing",
+        "strategic_fit": "agent",
+    }
+
+
+def first_non_auto_route_value(cfg: TriageConfig) -> tuple[str, str]:
+    for classification, path_name in cfg.route.map.items():
+        if not cfg.get_path(path_name).auto:
+            return classification, path_name
+    classification, path_name = next(iter(cfg.route.map.items()))
+    return classification, path_name
+
+
+def cmd_smoke_test(config_path: str | Path = "triage.yaml") -> int:
+    """Run a no-network, no-live-Hermes simulation of one item lifecycle."""
+    try:
+        cfg = TriageConfig.load(config_path)
+    except ConfigError as exc:
+        print(f"[FAIL] config - {exc}")
+        return 1
+
+    smoke_root = cfg.resolve_path(cfg.workspace_root) / "smoke"
+    vault = ItemVault(smoke_root / "vault" / "items")
+    engine = TriageEngine(cfg, vault)
+    candidate = smoke_candidate()
+    slug = candidate["slug"]
+    candidate_text = f"{candidate['title']}\n{candidate['claim']}\n{candidate['why_it_may_matter']}"
+
+    existing = vault.item_path(slug)
+    if existing.exists():
+        existing.unlink()
+
+    print(f"[OK] config - loaded pipeline {cfg.name!r}")
+
+    matches = engine.dedup(candidate_text)
+    blocking = [m for m in matches if m.decision == "duplicate"]
+    if blocking:
+        print(f"[FAIL] dedup - candidate matched duplicate {blocking[0].slug!r}")
+        return 1
+    print(f"[OK] dedup - no duplicate found ({len(matches)} prior match(es) checked)")
+
+    score = engine.score_heuristic(candidate)
+    if not score.advance:
+        print(f"[FAIL] score - smoke candidate scored {score.total}/{cfg.rubric.max_total}, below threshold {cfg.rubric.threshold}")
+        return 1
+    print(f"[OK] score - {score.total}/{cfg.rubric.max_total} clears threshold {cfg.rubric.threshold}")
+
+    item = vault.create_item(
+        slug=slug,
+        title=candidate["title"],
+        sources=candidate["sources"],
+        body=candidate_text,
+    )
+    item.frontmatter["score"] = score.total
+    item.frontmatter["score_breakdown"] = score.breakdown
+    item.frontmatter["status"] = "researching"
+    vault.save(item)
+
+    research = engine.research_specs(slug, "smoke-triage-task")
+    if len(research) != len(cfg.research.lanes):
+        print(f"[FAIL] research - expected {len(cfg.research.lanes)} specs, got {len(research)}")
+        return 1
+    print(f"[OK] research - built {len(research)} parallel lane spec(s)")
+
+    classification, expected_path = first_non_auto_route_value(cfg)
+    routed_path = engine.route(classification)
+    if routed_path != expected_path:
+        print(f"[FAIL] route - {classification!r} routed to {routed_path!r}, expected {expected_path!r}")
+        return 1
+    print(f"[OK] route - classifier value {classification!r} maps to path {routed_path!r}")
+
+    prep = engine.prep_specs(slug, routed_path)
+    if not cfg.get_path(routed_path).auto and not prep:
+        print(f"[FAIL] prep - path {routed_path!r} produced no prep specs")
+        return 1
+    print(f"[OK] prep - built {len(prep)} pre-gate task spec(s)")
+
+    item = vault.load(slug)
+    item.frontmatter["path"] = routed_path
+    item.frontmatter["status"] = "awaiting_approval"
+    item.frontmatter["linked_kanban_tasks"] = ["smoke-triage-task"]
+    vault.save(item)
+    print("[OK] approval - simulated human gate at awaiting_approval")
+
+    fulfillment = engine.fulfillment_specs(slug, routed_path)
+    if not cfg.get_path(routed_path).auto and not fulfillment:
+        print(f"[FAIL] fulfillment - path {routed_path!r} produced no fulfillment specs")
+        return 1
+    for spec in fulfillment:
+        if spec.workspace_kind != "dir" or not spec.workspace_path:
+            print(f"[FAIL] fulfillment - {spec.title!r} did not use a persistent dir workspace")
+            return 1
+    item = vault.load(slug)
+    item.frontmatter["status"] = "approved"
+    vault.save(item)
+    print(f"[OK] fulfillment - built {len(fulfillment)} persistent post-gate task spec(s)")
+
+    print(f"\nSmoke test passed. Item written to: {item.path}")
+    return 0
+
+
+def cmd_smoke_test_from_args(args: argparse.Namespace) -> int:
+    return cmd_smoke_test(args.config)
+
+
 def cmd_stub(name: str):
     def run(args: argparse.Namespace) -> int:
         print(f"`{name}` is a stub in this template. See `python -m cli.triage scaffold` for the plan, "
@@ -201,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("validate", help="Validate triage.yaml.").set_defaults(func=cmd_validate)
     sub.add_parser("scaffold", help="Print the setup plan from triage.yaml.").set_defaults(func=cmd_scaffold)
     sub.add_parser("doctor", help="Check local Hermes readiness for this pipeline.").set_defaults(func=cmd_doctor_from_args)
+    sub.add_parser("smoke-test", help="Simulate one item lifecycle locally without live Hermes agents.").set_defaults(func=cmd_smoke_test_from_args)
     sub.add_parser("init", help="(stub) Start a new project.").set_defaults(func=cmd_stub("init"))
     sub.add_parser("install", help="(stub) Execute the scaffold plan.").set_defaults(func=cmd_stub("install"))
     args = parser.parse_args(argv)

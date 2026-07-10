@@ -43,6 +43,7 @@ hermes-triage validate                   # check the example config
 python -m unittest discover -s tests     # 12 tests, all generic
 hermes-triage scaffold                   # print the Hermes setup plan
 hermes-triage doctor                     # check Hermes readiness for this pipeline
+hermes-triage smoke-test                 # simulate one local item lifecycle
 ```
 
 For old-style usage without installing the package, `python -m cli.triage ...`
