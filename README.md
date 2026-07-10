@@ -44,6 +44,8 @@ python -m unittest discover -s tests     # 12 tests, all generic
 hermes-triage scaffold                   # print the Hermes setup plan
 hermes-triage doctor                     # check Hermes readiness for this pipeline
 hermes-triage smoke-test                 # simulate one local item lifecycle
+hermes-triage item list                  # list local smoke-test item records
+hermes-triage item show <slug>           # inspect item frontmatter, events, body
 ```
 
 For old-style usage without installing the package, `python -m cli.triage ...`

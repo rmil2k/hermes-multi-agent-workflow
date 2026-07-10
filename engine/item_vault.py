@@ -102,6 +102,14 @@ class ItemVault:
         self.save(item)
         return item
 
+    def append_event(self, slug: str, event: str, **fields: Any) -> Item:
+        item = self.load(slug)
+        entry: dict[str, Any] = {"at": utc_now_iso(), "event": event}
+        entry.update(fields)
+        item.frontmatter.setdefault("events", []).append(entry)
+        self.save(item)
+        return item
+
     def append_source(self, slug: str, source: dict[str, Any]) -> Item:
         item = self.load(slug)
         item.frontmatter.setdefault("sources", []).append(source)
