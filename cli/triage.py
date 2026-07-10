@@ -66,9 +66,27 @@ def scaffold_commands(cfg: TriageConfig, *, base_profile: str = "default", pause
     commands: list[list[str]] = [["hermes", "kanban", "boards", "create", cfg.board]]
     profiles = sorted(set(cfg.roles.values()) | {s.profile for s in cfg.sources})
     commands.extend(["hermes", "profile", "create", prof, "--clone-from", base_profile] for prof in profiles)
-    commands.append(["hermes", "skills", "install", "skills/templates/triage-orchestrator", "--profile", cfg.roles.get("orchestrator", "orchestrator")])
+    commands.append([
+        "hermes",
+        "--profile",
+        cfg.roles.get("orchestrator", "orchestrator"),
+        "skills",
+        "install",
+        "skills/templates/triage-orchestrator/SKILL.md",
+        "--name",
+        "triage-orchestrator",
+    ])
     for source in cfg.sources:
-        commands.append(["hermes", "skills", "install", f"skills/templates/{source.skill}", "--profile", source.profile])
+        commands.append([
+            "hermes",
+            "--profile",
+            source.profile,
+            "skills",
+            "install",
+            f"skills/templates/{source.skill}/SKILL.md",
+            "--name",
+            source.skill,
+        ])
     for source in cfg.sources:
         commands.append(["hermes", "cron", "create", source.schedule, "--profile", source.profile, "--skill", source.skill])
     if paused:
