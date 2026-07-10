@@ -41,7 +41,8 @@ metadata:
 ## Key invariants (do not break)
 
 - **Never auto-approve.** Always stop at `awaiting_approval`.
-- **Persistent `dir` workspaces** for all post-gate work (engine already enforces this).
+- **Persistent `dir` workspaces** for every child task that writes useful artifacts — research, analysis, prep, and fulfillment. Do not rely on scratch workspaces; Hermes cleans them up after completion.
+- Use a stable per-item workspace such as `/opt/data/projects/hermes-multi-agent-workflow/work/items/<slug>/` and create child tasks with `--workspace dir:/opt/data/projects/hermes-multi-agent-workflow/work/items/<slug>`.
 - **One human notification** per item (use `hermes send`).
 - First post-gate task must be `ready` (no parent).
 
@@ -58,10 +59,20 @@ It also calls the engine programmatically when running inside Hermes.
 ## Output contract
 
 The orchestrator writes:
-- Research specs → Kanban tasks assigned to `researcher`
-- Prep specs → Kanban tasks assigned to `analyst` / `builder`
-- Fulfillment specs → Kanban tasks assigned to appropriate role
+- Research specs → Kanban tasks assigned to `researcher`, with persistent `dir:` workspace
+- Prep/spec synthesis tasks → Kanban tasks assigned to `analyst` / `builder`, with persistent `dir:` workspace
+- Fulfillment specs → Kanban tasks assigned to appropriate role, with persistent `dir:` workspace
 - Final delivery notification via `hermes send`
+
+When creating follow-up tasks manually, use this pattern:
+
+```bash
+/opt/hermes/bin/hermes kanban --board pain-point create "research: <title>" \
+  --assignee researcher \
+  --parent <intake-task-id> \
+  --workspace dir:/opt/data/projects/hermes-multi-agent-workflow/work/items/<slug> \
+  --body "<research spec>"
+```
 
 ## Don't
 

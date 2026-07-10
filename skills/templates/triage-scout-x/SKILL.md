@@ -29,14 +29,13 @@ Find posts about AI agent workflows breaking silently, wasted hours, and blocked
    - One line on **why it may matter**
 3. Write report to:
    `${HERMES_PROFILE_DIR}/vault/intake/<UTC-timestamp>-x.md`
-4. Create ONE intake Kanban task:
+4. Create ONE intake Kanban task with the real Hermes CLI:
    ```bash
-   kanban_create(
-     board: "<board from triage.yaml>",
-     title: "intake: x <UTC-date>",
-     assignee: "orchestrator",
-     body: "<path to the report>"
-   )
+   /opt/hermes/bin/hermes kanban --board pain-point create "intake: x <UTC-date>" \
+     --assignee orchestrator \
+     --skill triage-orchestrator \
+     --body "<path to the report>" \
+     --created-by triage-scout-x
    ```
 
 ## Report format
