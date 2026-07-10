@@ -41,7 +41,8 @@ lives in one file, `triage.yaml`.
 python -m pip install -e .               # installs the hermes-triage CLI
 hermes-triage validate                   # check the example config
 python -m unittest discover -s tests     # 12 tests, all generic
-hermes-triage scaffold                   # print the Hermes setup plan
+hermes-triage scaffold --base-profile default # print setup commands using a base profile
+hermes-triage scaffold --apply --base-profile default # execute setup commands
 hermes-triage doctor                     # check Hermes readiness for this pipeline
 hermes-triage smoke-test                 # simulate one local item lifecycle
 hermes-triage item list                  # list live item records

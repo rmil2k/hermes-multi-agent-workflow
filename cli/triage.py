@@ -21,6 +21,7 @@ Wire them up to your environment as you adopt the template.
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -60,32 +61,27 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_scaffold(args: argparse.Namespace) -> int:
-    cfg = TriageConfig.load(args.config)
-    print(f"# Scaffold plan for pipeline {cfg.name!r}. Review, then run the commands you trust.\n")
-    print(f"# 1. Create the dedicated board")
-    print(f"hermes kanban boards create {cfg.board}    # TODO: confirm subcommand on your Hermes version\n")
-    print(f"# 2. Create the profiles (one per role + one per source profile)")
+def scaffold_commands(cfg: TriageConfig, *, base_profile: str = "default", paused: bool = True) -> list[list[str]]:
+    """Build the Hermes CLI commands needed to scaffold this pipeline."""
+    commands: list[list[str]] = [["hermes", "kanban", "boards", "create", cfg.board]]
     profiles = sorted(set(cfg.roles.values()) | {s.profile for s in cfg.sources})
-    for prof in profiles:
-        print(f"hermes profile create {prof} --from <base-profile>   # TODO: set model in {prof}/config.yaml")
-    print()
-    print(f"# 3. Source profiles need the `kanban` toolset (they run via cron, not the dispatcher)")
-    for s in cfg.sources:
-        print(f"#   edit ~/.hermes/profiles/{s.profile}/config.yaml → toolsets: [hermes-cli, kanban]")
-    print()
-    print(f"# 4. Install skills: copy skills/templates/triage-orchestrator → orchestrator profile,")
-    print(f"#    and triage-scout → each source profile (rename per source).")
-    for s in cfg.sources:
-        print(f"#   {s.skill} → profile {s.profile}")
-    print()
-    print(f"# 5. Register scout crons in the GATEWAY profile's store (v0.15.0+ reads only that store)")
-    for s in cfg.sources:
-        print(f"orchestrator cron create '{s.schedule}' --profile {s.profile} --skill {s.skill}   # TODO confirm flags")
-    print()
-    print(f"# 6. Start the runtime (WSL: foreground):  orchestrator gateway run")
-    print(f"# See docs/07-runbook.md for the full go-live sequence.")
-    return 0
+    commands.extend(["hermes", "profile", "create", prof, "--from", base_profile] for prof in profiles)
+    commands.append(["hermes", "skills", "install", "skills/templates/triage-orchestrator", "--profile", cfg.roles.get("orchestrator", "orchestrator")])
+    for source in cfg.sources:
+        commands.append(["hermes", "skills", "install", f"skills/templates/{source.skill}", "--profile", source.profile])
+    for source in cfg.sources:
+        commands.append(["hermes", "cron", "create", source.schedule, "--profile", source.profile, "--skill", source.skill])
+    if paused:
+        commands.append(["hermes", "cron", "pause", "all"])
+    return commands
+
+
+def shell_join(cmd: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in cmd)
+
+
+def cmd_scaffold(args: argparse.Namespace) -> int:
+    return cmd_scaffold_plan(args.config, base_profile=args.base_profile, apply=args.apply, paused=args.paused)
 
 
 def run_command(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
@@ -93,6 +89,43 @@ def run_command(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
         return subprocess.run(cmd, text=True, capture_output=True, **kwargs)
     except FileNotFoundError as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+
+def cmd_scaffold_plan(
+    config_path: str | Path = "triage.yaml",
+    *,
+    base_profile: str = "default",
+    apply: bool = False,
+    paused: bool = True,
+    runner: Runner = run_command,
+) -> int:
+    try:
+        cfg = TriageConfig.load(config_path)
+    except ConfigError as exc:
+        print(f"[FAIL] scaffold - {exc}")
+        return 1
+
+    commands = scaffold_commands(cfg, base_profile=base_profile, paused=paused)
+    mode = "Apply" if apply else "Dry run"
+    print(f"# {mode} scaffold plan for pipeline {cfg.name!r}")
+    print(f"# Board: {cfg.board}")
+    print("# Source profiles must include the `kanban` toolset before scouts go live.")
+    print()
+
+    if not apply:
+        for cmd in commands:
+            print(shell_join(cmd))
+        return 0
+
+    for cmd in commands:
+        print(f"$ {shell_join(cmd)}")
+        result = runner(cmd)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "command failed").strip()
+            print(f"[FAIL] command exited {result.returncode}: {detail}")
+            return result.returncode or 1
+    print(f"Applied {len(commands)} scaffold command(s).")
+    return 0
 
 
 def names_from_lines(output: str) -> set[str]:
@@ -384,7 +417,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default="triage.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", help="Validate triage.yaml.").set_defaults(func=cmd_validate)
-    sub.add_parser("scaffold", help="Print the setup plan from triage.yaml.").set_defaults(func=cmd_scaffold)
+    scaffold = sub.add_parser("scaffold", help="Print or apply the setup plan from triage.yaml.")
+    scaffold.add_argument("--base-profile", default="default", help="Profile to clone when creating role/source profiles.")
+    scaffold.add_argument("--apply", action="store_true", help="Execute the scaffold commands instead of printing them.")
+    scaffold.add_argument("--no-paused", dest="paused", action="store_false", help="Do not append a cron pause command to the plan.")
+    scaffold.set_defaults(func=cmd_scaffold, paused=True)
     sub.add_parser("doctor", help="Check local Hermes readiness for this pipeline.").set_defaults(func=cmd_doctor_from_args)
     sub.add_parser("smoke-test", help="Simulate one item lifecycle locally without live Hermes agents.").set_defaults(func=cmd_smoke_test_from_args)
     item = sub.add_parser("item", help="Inspect local item vault records.")
