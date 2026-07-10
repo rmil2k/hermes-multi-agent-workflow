@@ -28,12 +28,16 @@ def write_config(root: Path) -> Path:
 
 
 class FakeRunner:
-    def __init__(self):
+    def __init__(self, responses=None):
         self.calls = []
+        self.responses = responses or {}
 
     def __call__(self, cmd, **kwargs):
         self.calls.append(tuple(cmd))
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        response = self.responses.get(tuple(cmd))
+        if response is None:
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, response, "")
 
 
 class TestScaffold(unittest.TestCase):
@@ -77,6 +81,33 @@ class TestScaffold(unittest.TestCase):
             self.assertEqual(runner.calls[0], ("hermes", "kanban", "boards", "create", "test-board"))
             self.assertIn(("hermes", "cron", "pause", "all"), runner.calls)
             self.assertIn("Applied", out.getvalue())
+
+    def test_scaffold_skip_existing_filters_board_and_profiles_before_apply(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = write_config(Path(td))
+            runner = FakeRunner({
+                ("hermes", "kanban", "boards", "list"): "test-board\n",
+                ("hermes", "profile", "list"): "orchestrator\nresearcher\nanalyst\nbuilder\nwebresearch\n",
+            })
+
+            out = StringIO()
+            with redirect_stdout(out):
+                rc = cmd_scaffold_plan(
+                    config,
+                    base_profile="base",
+                    apply=True,
+                    paused=True,
+                    skip_existing=True,
+                    runner=runner,
+                )
+
+            self.assertEqual(rc, 0)
+            self.assertIn(("hermes", "kanban", "boards", "list"), runner.calls)
+            self.assertIn(("hermes", "profile", "list"), runner.calls)
+            self.assertNotIn(("hermes", "kanban", "boards", "create", "test-board"), runner.calls)
+            self.assertNotIn(("hermes", "profile", "create", "orchestrator", "--from", "base"), runner.calls)
+            self.assertIn(("hermes", "cron", "pause", "all"), runner.calls)
+            self.assertIn("Skipping existing board", out.getvalue())
 
 
 if __name__ == "__main__":

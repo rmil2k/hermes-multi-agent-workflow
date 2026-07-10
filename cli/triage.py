@@ -81,7 +81,13 @@ def shell_join(cmd: list[str]) -> str:
 
 
 def cmd_scaffold(args: argparse.Namespace) -> int:
-    return cmd_scaffold_plan(args.config, base_profile=args.base_profile, apply=args.apply, paused=args.paused)
+    return cmd_scaffold_plan(
+        args.config,
+        base_profile=args.base_profile,
+        apply=args.apply,
+        paused=args.paused,
+        skip_existing=args.skip_existing,
+    )
 
 
 def run_command(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
@@ -91,12 +97,35 @@ def run_command(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
+def filter_existing_scaffold_commands(
+    commands: list[list[str]],
+    *,
+    runner: Runner,
+) -> list[list[str]]:
+    board_result = runner(["hermes", "kanban", "boards", "list"])
+    existing_boards = names_from_lines(board_result.stdout) if board_result.returncode == 0 else set()
+    profile_result = runner(["hermes", "profile", "list"])
+    existing_profiles = names_from_lines(profile_result.stdout) if profile_result.returncode == 0 else set()
+
+    filtered: list[list[str]] = []
+    for cmd in commands:
+        if cmd[:4] == ["hermes", "kanban", "boards", "create"] and cmd[4] in existing_boards:
+            print(f"[SKIP] Skipping existing board {cmd[4]!r}")
+            continue
+        if cmd[:3] == ["hermes", "profile", "create"] and cmd[3] in existing_profiles:
+            print(f"[SKIP] Skipping existing profile {cmd[3]!r}")
+            continue
+        filtered.append(cmd)
+    return filtered
+
+
 def cmd_scaffold_plan(
     config_path: str | Path = "triage.yaml",
     *,
     base_profile: str = "default",
     apply: bool = False,
     paused: bool = True,
+    skip_existing: bool = False,
     runner: Runner = run_command,
 ) -> int:
     try:
@@ -111,6 +140,8 @@ def cmd_scaffold_plan(
     print(f"# Board: {cfg.board}")
     print("# Source profiles must include the `kanban` toolset before scouts go live.")
     print()
+    if skip_existing:
+        commands = filter_existing_scaffold_commands(commands, runner=runner)
 
     if not apply:
         for cmd in commands:
@@ -420,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     scaffold = sub.add_parser("scaffold", help="Print or apply the setup plan from triage.yaml.")
     scaffold.add_argument("--base-profile", default="default", help="Profile to clone when creating role/source profiles.")
     scaffold.add_argument("--apply", action="store_true", help="Execute the scaffold commands instead of printing them.")
+    scaffold.add_argument("--skip-existing", action="store_true", help="Skip board/profile create commands when they already exist.")
     scaffold.add_argument("--no-paused", dest="paused", action="store_false", help="Do not append a cron pause command to the plan.")
     scaffold.set_defaults(func=cmd_scaffold, paused=True)
     sub.add_parser("doctor", help="Check local Hermes readiness for this pipeline.").set_defaults(func=cmd_doctor_from_args)
