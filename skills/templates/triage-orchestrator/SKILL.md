@@ -1,105 +1,70 @@
 ---
 name: triage-orchestrator
 description: >
-  The pipeline driver for the Hermes Multi-Agent Workflow. Triggered by new `intake`
-  tasks on the triage board. Dedups, scores, fans out research, routes, proposes
-  at the human gate, and on approval lets the engine spawn the fulfillment chain.
-  It is DELIBERATELY THIN: it calls engine/* for every deterministic step and
-  only supplies judgment (scoring, classification, proposal prose).
+  Central orchestrator for the Hermes Multi-Agent Workflow.
+  Picks up intake tasks, runs dedup/score/route, fans out research,
+  proposes to the human gate, then drives post-gate fulfillment.
+  This is the "brain" skill — installed on the orchestrator profile.
 metadata:
   hermes:
-    tags: [triage, orchestrator]
+    tags: [triage, orchestrator, core]
 ---
 
-# Triage orchestrator (thin driver)
+# Triage Orchestrator
 
-> **Design contract:** fat engine, thin skill. Anything deterministic —
-> dedup lookup, applying the score threshold, route resolution, building research
-> fan-out, building the prep/fulfillment chains, choosing workspaces — is a call
-> into `engine/`. You (the model) only do what needs judgment. Do NOT re-derive
-> the pipeline shape in prose here; it lives in `triage.yaml`. Read
-> `docs/01-architecture.md` and `docs/05-pipeline-stages.md`.
+> **Role:** The single stateful coordinator. Everything deterministic lives in
+> `engine/`. This skill only does the parts that need model judgment:
+> proposing scores, classifying research results, writing proposal prose,
+> and deciding when to move items through the human gate.
 
-All commands below run from the repo root with `triage.yaml` present.
-`TRIAGE_CONFIG`, `TRIAGE_VAULT_DIR`, and `HERMES_KANBAN_DB` are honored.
+## When it runs
 
-## Trigger
+- Triggered by new `intake` Kanban tasks (created by scouts)
+- Also runs on a schedule to sweep for stuck items or new research results
 
-A new `intake` task assigned to you appears on the triage board. Its body is a
-path to a scout report.
+## Core loop (one intake task)
 
-## Procedure
+1. Load the intake report (body of the Kanban task)
+2. Parse candidates → call `hermes-triage` engine for each:
+   - dedup
+   - score
+   - create item in vault
+3. For items that pass threshold:
+   - build research lane specs
+   - create parallel research tasks (kanban)
+4. When research completes → classify + route
+5. Build prep specs → create prep tasks
+6. Human gate (awaiting_approval)
+7. On approval → build fulfillment specs → create fulfillment tasks
+8. On delivery → mark item `delivered`, close chain
 
-### 1. Parse intake
-Read the report file. Parse it into candidates (`engine/intake_parser.py` shape).
+## Key invariants (do not break)
 
-### 2. Dedup (deterministic — call the engine)
-For each candidate, ask the engine for similar existing items:
+- **Never auto-approve.** Always stop at `awaiting_approval`.
+- **Persistent `dir` workspaces** for all post-gate work (engine already enforces this).
+- **One human notification** per item (use `hermes send`).
+- First post-gate task must be `ready` (no parent).
+
+## Commands it uses
+
+```bash
+hermes-triage validate
+hermes-triage item show <slug>
+hermes-triage item events <slug>
 ```
-python -c "from engine.config import TriageConfig; from engine.engine import TriageEngine; \
-import json,sys; e=TriageEngine(TriageConfig.load()); \
-print(json.dumps([m.__dict__ for m in e.dedup(sys.argv[1])]))" "<candidate title + claim>"
-```
-- `duplicate` → append the new source to the existing item, stop. Don't re-research.
-- `possible` → note it, continue, re-check after research.
-- `new` → create a vault item (`ItemVault.create_item`) with `status: triage`.
 
-### 3. Score (judgment + engine validation)
-This is YOUR judgment. Get the rubric prompt from the engine
-(`TriageEngine.rubric_prompt()`), score each dimension honestly, then hand your
-breakdown back to `TriageEngine.score(breakdown)` to apply the maxes + threshold.
-Write `score` / `score_breakdown` to the item file regardless of outcome.
-- Below threshold → shelve automatically. **Do not bother the human.**
-- At/above → continue.
+It also calls the engine programmatically when running inside Hermes.
 
-(For a deterministic/offline pass you may instead call
-`TriageEngine.score_heuristic(candidate)` — see engine/scoring.py.)
+## Output contract
 
-### 4. Research fan-out (engine builds the cards)
-Create one triage root task, then create the research lane cards from
-`TriageEngine.research_specs(slug, triage_id)` — they run in parallel, all
-parented to the triage task. Create a single `route` card parented to ALL lanes
-so the kernel fires it the instant the last lane finishes (fan-in). Assign the
-`route` card back to yourself.
+The orchestrator writes:
+- Research specs → Kanban tasks assigned to `researcher`
+- Prep specs → Kanban tasks assigned to `analyst` / `builder`
+- Fulfillment specs → Kanban tasks assigned to appropriate role
+- Final delivery notification via `hermes send`
 
-### 5. Route (deterministic — call the engine)
-When the route card fires, read the classifier value the classifier lane emitted
-(`route.classifier` in triage.yaml). Resolve the path:
-`TriageEngine.route(classification)` → a path name. Write `path: <name>` on the
-item. If the path is `auto` (e.g. `shelve`), close out — no proposal.
+## Don't
 
-### 6. Prep + propose (engine builds prep; you write the proposal)
-Spawn the path's prep chain from `TriageEngine.prep_specs(slug, path)`. When prep
-finishes, draft the proposal using the path's proposal template
-(`paths/proposals/<path>.md`), set item `status: awaiting_approval`, and **send it
-to the human** — you MUST actually deliver it:
-```
-hermes send --to telegram --file <proposal.md>
-```
-Setting status is NOT delivery. (See docs/06 + the runbook.) Then move on to
-other items while waiting — the gate is non-blocking.
-
-### 7. Gate (human replies; you shell to the handler)
-Map the human's reply verb (see `gate:` in triage.yaml — NO leading slash) to:
-```
-python proposal_actions.py approve     <slug>
-python proposal_actions.py shelve      <slug> --reason "..."
-python proposal_actions.py shelve-all  [--except <slug>]
-python proposal_actions.py modify      <slug> --change "..."
-```
-On `approve`, the handler reads `paths.<path>.fulfill` from triage.yaml and
-spawns the post-gate chain in a shared persistent workspace. You do nothing else.
-
-### 8. Deliver
-When the final fulfillment stage completes, DM the deliverable to the human
-(`hermes send --to telegram --file <deliverable>`).
-
-## Rules
-
-- Narrate one line per decision to Telegram so the human has a pulse.
-- Never auto-approve. The gate is real.
-- Only YOU write vault item files and create child tasks. Workers don't fan out.
-- Be honest in scoring/classification — gaming them wastes the human's one tap
-  and produces low-value output.
-- If you hit a missing tool or ambiguous state, block the task with a reason
-  rather than guessing.
+- Don't implement scoring/routing/dedup logic here — use the engine.
+- Don't bypass the human gate.
+- Don't create tasks with blocking parents as the first post-gate step.
