@@ -53,6 +53,7 @@ hermes-triage validate
 hermes-triage item show <slug>
 hermes-triage item events <slug>
 hermes-triage gate notify --file <proposal.md> --subject "[gate] <slug>" --apply
+hermes-triage gate handle --reply "approve <slug>"
 ```
 
 It also calls the engine programmatically when running inside Hermes.

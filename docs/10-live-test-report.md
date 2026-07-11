@@ -140,12 +140,21 @@ Verified send result included:
 }
 ```
 
+## Post-gate approval hardening
+
+Action taken after Discord gate notification was working:
+
+- Added `hermes-triage gate handle --reply "<reply>"` so plain replies like `approve <slug>`, `shelve <slug>: <reason>`, `modify <slug>: <change>`, and `reject the rest` are parsed through the configured `gate:` verbs.
+- Added regression tests proving approval spawns the post-gate fulfillment chain from `paths.<path>.fulfill`.
+- Verified the first fulfillment task is created `ready`; later fulfillment tasks are chained as `todo` behind the previous task.
+- Approval now appends an `approved` item-vault event with fulfillment-task count and first-task id.
+
 ## Conclusion
 
-The first live sub-agent chain worked end-to-end:
+The live chain now has the wired post-gate shape:
 
 ```text
-web scout → intake task → orchestrator → researcher → analyst
+web scout → intake task → orchestrator → researcher → analyst → proposal DM → approve reply → fulfillment chain
 ```
 
-The system is usable for live triage runs. The next improvement is persistence polish for generated artifacts and a human-gate notification task after analyst synthesis.
+The next improvement is to let the live builder/tester/report tasks complete and then verify the final delivery DM/artifact handoff.

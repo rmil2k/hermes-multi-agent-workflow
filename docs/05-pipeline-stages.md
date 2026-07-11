@@ -70,7 +70,8 @@ the orchestrator drafts the proposal from `paths/proposals/<path>.md`, sets
 
 ## Stage 8 — Human gate
 
-The human replies (verbs from `gate:`). The orchestrator shells to
+The human replies (verbs from `gate:`). The reply text is parsed by
+`hermes-triage gate handle --reply "<reply>"`, which dispatches to
 `proposal_actions.py {approve|shelve|shelve-all|modify}`.
 
 - ⚠️ **Gotcha — approval text is plain chat.** Reply with plain text such as

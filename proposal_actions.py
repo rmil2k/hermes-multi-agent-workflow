@@ -61,9 +61,10 @@ def board_db(config: TriageConfig) -> Path:
     env = os.environ.get("HERMES_KANBAN_DB")
     if env:
         return Path(env).resolve()
+    hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes"))
     if config.board == "default":
-        return Path.home() / ".hermes" / "kanban.db"
-    return Path.home() / ".hermes" / "kanban" / "boards" / config.board / "kanban.db"
+        return hermes_home / "kanban.db"
+    return hermes_home / "kanban" / "boards" / config.board / "kanban.db"
 
 
 def first_linked_task(fm: dict[str, Any]) -> str | None:
@@ -145,6 +146,13 @@ def action_approve(slug: str) -> dict[str, Any]:
     fm["status"] = "approved"
     fm["approved_at"] = utc_now_iso()
     fm.setdefault("linked_kanban_tasks", []).extend(c["task_id"] for c in created)
+    fm.setdefault("events", []).append({
+        "at": fm["approved_at"],
+        "event": "approved",
+        "path": path_name,
+        "fulfillment_tasks": len(created),
+        "first_task_id": created[0]["task_id"],
+    })
     item.body = append_note(body, f"✅ **Approved by human.** Spawned {path_name} chain: {chain_desc}.")
     vault.save(item)
     return {"ok": True, "action": "approve", "slug": slug, "path": path_name, "chain": created,

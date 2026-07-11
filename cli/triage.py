@@ -406,6 +406,80 @@ def cmd_gate_notify(
     return 0
 
 
+def parse_gate_reply(cfg: TriageConfig, reply: str) -> tuple[str, str, str | None]:
+    """Parse a plain-text human gate reply using verbs from triage.yaml.
+
+    Returns (action, slug, detail). `reject the rest` maps to `shelve-all` with
+    an empty slug. Replies intentionally do not require slash commands so the
+    same text works in Discord, Telegram, SMS, and terminal handoff notes.
+    """
+    text = " ".join(reply.strip().split())
+    if not text:
+        raise ValueError("Gate reply is empty.")
+
+    verb_map: list[tuple[str, str]] = []
+    for action, verbs in (("approve", cfg.gate.approve), ("shelve", cfg.gate.shelve), ("modify", cfg.gate.modify)):
+        for verb in verbs:
+            verb_map.append((action, " ".join(str(verb).strip().split())))
+    # Prefer the longest phrase first so `reject the rest` beats `reject` if both exist.
+    for action, verb in sorted(verb_map, key=lambda item: len(item[1]), reverse=True):
+        if not verb:
+            continue
+        if text.lower() == verb.lower() or text.lower().startswith(verb.lower() + " "):
+            remainder = text[len(verb):].strip()
+            if action == "shelve" and not remainder and verb.lower() in {"reject the rest", "shelve all", "shelve-all"}:
+                return "shelve-all", "", None
+            if not remainder:
+                raise ValueError(f"Gate reply `{verb}` needs an item slug.")
+            slug, sep, detail = remainder.partition(":")
+            slug = slug.strip().split()[0]
+            extra = detail.strip() if sep else None
+            if action in {"shelve", "modify"} and extra is None:
+                # Accept `modify slug change text` as a convenience, while keeping
+                # `modify slug: change text` as the documented syntax.
+                parts = remainder.split(maxsplit=1)
+                if len(parts) == 2:
+                    slug, extra = parts[0], parts[1].strip()
+            return action, slug, extra
+    raise ValueError(f"Gate reply does not start with a configured gate verb: {reply!r}")
+
+
+def cmd_gate_handle(
+    config_path: str | Path,
+    reply: str,
+) -> int:
+    try:
+        cfg = TriageConfig.load(config_path)
+        action, slug, detail = parse_gate_reply(cfg, reply)
+    except (ConfigError, ValueError) as exc:
+        print(f"[FAIL] gate handle - {exc}")
+        return 1
+
+    import proposal_actions
+
+    proposal_actions.CONFIG_PATH = Path(config_path)
+    try:
+        if action == "approve":
+            result = proposal_actions.action_approve(slug)
+        elif action == "shelve":
+            result = proposal_actions.action_shelve(slug, detail)
+        elif action == "shelve-all":
+            result = proposal_actions.action_shelve_all(detail)
+        elif action == "modify":
+            if not detail:
+                print("[FAIL] gate handle - modify replies require change text after the slug")
+                return 1
+            result = proposal_actions.action_modify(slug, detail)
+        else:
+            print(f"[FAIL] gate handle - unsupported action {action!r}")
+            return 1
+    except SystemExit as exc:
+        return int(exc.code or 1)
+    print(f"[OK] gate handle - {action} {slug}".rstrip())
+    print(result)
+    return 0
+
+
 def cmd_gate_from_args(args: argparse.Namespace) -> int:
     if args.gate_command == "notify":
         return cmd_gate_notify(
@@ -414,7 +488,9 @@ def cmd_gate_from_args(args: argparse.Namespace) -> int:
             subject=args.subject,
             apply=args.apply,
         )
-    print("[FAIL] gate - expected subcommand: notify")
+    if args.gate_command == "handle":
+        return cmd_gate_handle(args.config, args.reply)
+    print("[FAIL] gate - expected subcommand: notify or handle")
     return 1
 
 
@@ -554,6 +630,8 @@ def main(argv: list[str] | None = None) -> int:
     gate_notify.add_argument("--file", required=True, help="Markdown proposal file to send.")
     gate_notify.add_argument("--subject", default=None, help="Optional subject/header line.")
     gate_notify.add_argument("--apply", action="store_true", help="Actually run hermes send. Default is dry-run print.")
+    gate_handle = gate_sub.add_parser("handle", help="Parse and apply a plain-text human gate reply, e.g. 'approve <slug>'.")
+    gate_handle.add_argument("--reply", required=True, help="Plain-text gate reply to process.")
     gate.set_defaults(func=cmd_gate_from_args)
     sub.add_parser("init", help="(stub) Start a new project.").set_defaults(func=cmd_stub("init"))
     sub.add_parser("install", help="(stub) Execute the scaffold plan.").set_defaults(func=cmd_stub("install"))

@@ -10,7 +10,7 @@ import yaml
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cli.triage import gate_send_command  # noqa: E402
+from cli.triage import gate_send_command, parse_gate_reply  # noqa: E402
 from engine.config import TriageConfig  # noqa: E402
 from tests.test_engine_core import make_config  # noqa: E402
 
@@ -55,6 +55,23 @@ class TestGateNotifications(unittest.TestCase):
                 cmd = gate_send_command(cfg, Path(td) / "proposal.md")
 
             self.assertEqual(cmd[:4], ["hermes", "send", "--to", "discord"])
+    def test_plain_reply_parser_maps_configured_gate_verbs(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg = cfg_with_gate(
+                Path(td),
+                {
+                    "channel": "discord",
+                    "approve": ["approve", "ship it"],
+                    "shelve": ["shelve", "reject the rest"],
+                    "modify": ["modify"],
+                },
+            )
+
+            self.assertEqual(parse_gate_reply(cfg, "approve silent-agent-workflow-failures"), ("approve", "silent-agent-workflow-failures", None))
+            self.assertEqual(parse_gate_reply(cfg, "ship it silent-agent-workflow-failures"), ("approve", "silent-agent-workflow-failures", None))
+            self.assertEqual(parse_gate_reply(cfg, "shelve silent-agent-workflow-failures: too broad"), ("shelve", "silent-agent-workflow-failures", "too broad"))
+            self.assertEqual(parse_gate_reply(cfg, "modify silent-agent-workflow-failures: narrow to Hermes"), ("modify", "silent-agent-workflow-failures", "narrow to Hermes"))
+            self.assertEqual(parse_gate_reply(cfg, "reject the rest"), ("shelve-all", "", None))
 
 
 if __name__ == "__main__":
