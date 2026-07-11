@@ -119,6 +119,27 @@ Future follow-up task pattern:
   --body "<research spec>"
 ```
 
+## Human-gate Discord DM hardening
+
+Action taken after the first live run:
+
+- Added `hermes-triage gate notify --file <proposal.md> --subject "[human gate] <slug>" --apply`.
+- Switched the live example gate to Discord:
+  - `gate.channel: discord`
+  - `gate.target: discord:rmil2k`
+- Added/verified Discord CLI sending for this environment by wiring `DISCORD_BOT_TOKEN` into the default and role profile `.env` files from the already-running gateway environment.
+- Sent live Discord DM test messages successfully via both raw `hermes send` and the new `hermes-triage gate notify --apply` helper.
+
+Verified send result included:
+
+```json
+{
+  "success": true,
+  "platform": "discord",
+  "chat_id": "1510055531635544246"
+}
+```
+
 ## Conclusion
 
 The first live sub-agent chain worked end-to-end:

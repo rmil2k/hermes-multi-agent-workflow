@@ -21,6 +21,8 @@ Wire them up to your environment as you adopt the template.
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import shlex
 import subprocess
 import sys
@@ -352,6 +354,70 @@ def cmd_item_from_args(args: argparse.Namespace) -> int:
     return 1
 
 
+def hermes_bin() -> str:
+    return os.environ.get("HERMES_BIN") or shutil.which("hermes") or "/opt/hermes/bin/hermes"
+
+
+def gate_send_command(cfg: TriageConfig, proposal_file: Path, *, subject: str | None = None) -> list[str]:
+    """Build the exact Hermes CLI command that notifies the human gate.
+
+    `gate.target` may be a full Hermes send target such as `discord:<dm_id>`.
+    If omitted, `gate.channel` is used, which sends to that platform's configured
+    home channel/DM.
+    """
+    hermes = hermes_bin()
+    target = cfg.gate.target or cfg.gate.channel
+    cmd = [hermes, "send", "--to", target]
+    if subject:
+        cmd.extend(["--subject", subject])
+    cmd.extend(["--file", str(proposal_file)])
+    return cmd
+
+
+def cmd_gate_notify(
+    config_path: str | Path,
+    proposal_file: str | Path,
+    *,
+    subject: str | None = None,
+    apply: bool = False,
+    runner: Runner = run_command,
+) -> int:
+    try:
+        cfg = TriageConfig.load(config_path)
+    except ConfigError as exc:
+        print(f"[FAIL] gate notify - {exc}")
+        return 1
+    proposal_path = Path(proposal_file)
+    if not proposal_path.exists():
+        print(f"[FAIL] gate notify - proposal file not found: {proposal_path}")
+        return 1
+    cmd = gate_send_command(cfg, proposal_path, subject=subject)
+    if not apply:
+        print(shell_join(cmd))
+        return 0
+    result = runner(cmd)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "command failed").strip()
+        print(f"[FAIL] gate notify - command exited {result.returncode}: {detail}")
+        return result.returncode or 1
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    print(f"[OK] gate notify - sent proposal to {cfg.gate.target or cfg.gate.channel}")
+    return 0
+
+
+def cmd_gate_from_args(args: argparse.Namespace) -> int:
+    if args.gate_command == "notify":
+        return cmd_gate_notify(
+            args.config,
+            args.file,
+            subject=args.subject,
+            apply=args.apply,
+        )
+    print("[FAIL] gate - expected subcommand: notify")
+    return 1
+
+
 def cmd_smoke_test(config_path: str | Path = "triage.yaml") -> int:
     """Run a no-network, no-live-Hermes simulation of one item lifecycle."""
     try:
@@ -482,6 +548,13 @@ def main(argv: list[str] | None = None) -> int:
     item_show.add_argument("slug")
     item_show.add_argument("--smoke", action="store_true", help="Read from the smoke-test vault instead of the live vault.")
     item.set_defaults(func=cmd_item_from_args)
+    gate = sub.add_parser("gate", help="Human-gate notification helpers.")
+    gate_sub = gate.add_subparsers(dest="gate_command", required=True)
+    gate_notify = gate_sub.add_parser("notify", help="Send or print the configured human-gate proposal notification.")
+    gate_notify.add_argument("--file", required=True, help="Markdown proposal file to send.")
+    gate_notify.add_argument("--subject", default=None, help="Optional subject/header line.")
+    gate_notify.add_argument("--apply", action="store_true", help="Actually run hermes send. Default is dry-run print.")
+    gate.set_defaults(func=cmd_gate_from_args)
     sub.add_parser("init", help="(stub) Start a new project.").set_defaults(func=cmd_stub("init"))
     sub.add_parser("install", help="(stub) Execute the scaffold plan.").set_defaults(func=cmd_stub("install"))
     args = parser.parse_args(argv)

@@ -63,7 +63,8 @@ the orchestrator drafts the proposal from `paths/proposals/<path>.md`, sets
   specs, and intermediate assets remain available after approval.
 
 - ⚠️ **Gotcha — delivery ≠ status.** The orchestrator is a headless worker. It
-  MUST run `hermes send --to telegram --file <proposal>`; setting the status field
+  MUST run `hermes-triage gate notify --file <proposal> --apply`, which sends to
+  `gate.target` (for this live setup, Discord DM). Setting the status field
   notifies no one. (The first live run of the origin system produced proposals
   that never reached the human because of exactly this.)
 
@@ -72,8 +73,9 @@ the orchestrator drafts the proposal from `paths/proposals/<path>.md`, sets
 The human replies (verbs from `gate:`). The orchestrator shells to
 `proposal_actions.py {approve|shelve|shelve-all|modify}`.
 
-- ⚠️ **Gotcha — no leading slash.** Telegram reserves `/commands`; `/approve` is
-  intercepted. Reply `approve <slug>`.
+- ⚠️ **Gotcha — approval text is plain chat.** Reply with plain text such as
+  `approve <slug>`, `shelve <slug>`, or `modify <slug> ...` rather than relying
+  on platform slash commands.
 - The gate is **non-blocking**: while waiting, the orchestrator processes other
   items.
 

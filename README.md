@@ -49,6 +49,7 @@ hermes-triage item list                  # list live item records
 hermes-triage item list --smoke          # list smoke-test item records
 hermes-triage item show <slug>           # inspect live item frontmatter, events, body
 hermes-triage item show <slug> --smoke   # inspect a smoke-test item
+hermes-triage gate notify --file proposal.md --subject "[gate] slug" --apply
 ```
 
 For old-style usage without installing the package, `python -m cli.triage ...`

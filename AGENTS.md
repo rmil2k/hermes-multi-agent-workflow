@@ -79,10 +79,10 @@ These cost real debugging in the system this was extracted from. Preserve them:
   write to the path workspace `work/<subdir>/<slug>/`. Scratch dirs are wiped
   between tasks, stranding evidence, specs, or final delivery assets.
 - **Setting status ≠ delivering.** The orchestrator is a headless worker; it must
-  actually run `hermes send --to telegram` to reach the human. Status fields
-  don't notify anyone.
-- **Telegram reserves `/commands`.** Gate replies carry NO leading slash
-  (`approve <slug>`, not `/approve`).
+  actually run `hermes-triage gate notify --apply` to reach the human. Status
+  fields don't notify anyone. The live gate target is Discord DM.
+- **Gate replies are plain text.** Replies carry NO leading slash
+  (`approve <slug>`, not `/approve`) so they work across Discord/Telegram/etc.
 - **First task in a post-gate chain must be `ready` (no blocking parent).** A
   child of the still-open triage task would sit in `todo` forever.
 

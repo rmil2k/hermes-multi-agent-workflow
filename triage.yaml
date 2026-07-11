@@ -170,12 +170,13 @@ roles:
   video_producer: video_producer
 
 # --------------------------------------------------------------------------- #
-# GATE — the single human approval point. The orchestrator maps these reply
-# verbs to proposal_actions.py subcommands. Telegram note: replies carry NO
-# leading slash (Telegram reserves /commands).
+# GATE — the single human approval point. `target` is passed to `hermes send`;
+# use `discord` for the configured Discord home DM/channel or an explicit target
+# from `hermes send --list discord` such as `discord:<dm_id>`.
 # --------------------------------------------------------------------------- #
 gate:
-  channel: telegram
+  channel: discord
+  target: discord:rmil2k
   approve: [approve]
   shelve:  [shelve, "reject the rest"]
   modify:  [modify]

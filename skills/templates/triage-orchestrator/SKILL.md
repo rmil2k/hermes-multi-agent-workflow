@@ -43,7 +43,7 @@ metadata:
 - **Never auto-approve.** Always stop at `awaiting_approval`.
 - **Persistent `dir` workspaces** for every child task that writes useful artifacts — research, analysis, prep, and fulfillment. Do not rely on scratch workspaces; Hermes cleans them up after completion.
 - Use a stable per-item workspace such as `/opt/data/projects/hermes-multi-agent-workflow/work/items/<slug>/` and create child tasks with `--workspace dir:/opt/data/projects/hermes-multi-agent-workflow/work/items/<slug>`.
-- **One human notification** per item (use `hermes send`).
+- **One human notification** per item (use `hermes-triage gate notify --apply`, which wraps `hermes send`).
 - First post-gate task must be `ready` (no parent).
 
 ## Commands it uses
@@ -52,6 +52,7 @@ metadata:
 hermes-triage validate
 hermes-triage item show <slug>
 hermes-triage item events <slug>
+hermes-triage gate notify --file <proposal.md> --subject "[gate] <slug>" --apply
 ```
 
 It also calls the engine programmatically when running inside Hermes.
@@ -62,7 +63,29 @@ The orchestrator writes:
 - Research specs → Kanban tasks assigned to `researcher`, with persistent `dir:` workspace
 - Prep/spec synthesis tasks → Kanban tasks assigned to `analyst` / `builder`, with persistent `dir:` workspace
 - Fulfillment specs → Kanban tasks assigned to appropriate role, with persistent `dir:` workspace
+- Human-gate proposal notification via `hermes-triage gate notify --apply`
 - Final delivery notification via `hermes send`
+
+## Human gate notification
+
+When prep is complete, write the proposal markdown into the item's persistent path workspace, set the item status to `awaiting_approval`, then send the proposal through the configured gate target:
+
+```bash
+hermes-triage gate notify \
+  --file /opt/data/projects/hermes-multi-agent-workflow/work/<path-subdir>/<slug>/proposal.md \
+  --subject "[human gate] <slug>" \
+  --apply
+```
+
+The target comes from `triage.yaml`:
+
+```yaml
+gate:
+  channel: discord
+  target: discord:rmil2k
+```
+
+If `target` is omitted, the helper sends to the channel/platform home target named by `channel` (for example `discord`).
 
 When creating follow-up tasks manually, use this pattern:
 

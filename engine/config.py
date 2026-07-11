@@ -105,6 +105,7 @@ class Dedup:
 @dataclass
 class Gate:
     channel: str = "telegram"
+    target: str | None = None          # hermes-send target, e.g. discord or discord:<dm_id>
     approve: list[str] = field(default_factory=lambda: ["approve"])
     shelve: list[str] = field(default_factory=lambda: ["shelve", "reject the rest"])
     modify: list[str] = field(default_factory=lambda: ["modify"])

@@ -94,8 +94,14 @@ rename/merge profiles without touching paths.
 
 | Key | Meaning |
 |---|---|
-| `channel` | Where proposals go (e.g. `telegram`). |
-| `approve` / `shelve` / `modify` | Reply verbs the orchestrator maps to `proposal_actions.py` subcommands. **No leading slash** on Telegram. |
+| `channel` | Platform used for proposals, e.g. `discord` or `telegram`. |
+| `target` | Optional exact `hermes send --to` target, e.g. `discord:rmil2k` or `discord:<dm_id>`. Defaults to `channel`. |
+| `approve[]` | Accepted approval phrases. |
+| `shelve[]` | Accepted rejection/shelving phrases. |
+| `modify[]` | Accepted modification-request phrases. |
+
+Use `hermes send --list discord` to discover Discord targets. For the live setup,
+the gate sends proposal markdown to a Discord DM target.
 
 ## Validation guarantees
 
