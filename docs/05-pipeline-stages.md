@@ -40,6 +40,9 @@ Below threshold → **auto-shelve, don't bother the human.** Write `score` /
 
 - ⚠️ **This is the fan-in pattern** — the route card auto-fires when the last lane
   finishes. No polling. See docs/02.
+- ⚠️ **Gotcha — research artifacts persist.** Every research lane runs with
+  `workspace_kind="dir"` pointed at `work/items/<slug>/`. Scratch workspaces are
+  cleaned after completion, so evidence tables and notes would otherwise vanish.
 
 ## Stage 5 — Route (engine)
 
@@ -54,6 +57,10 @@ maps it to a path name; the orchestrator writes `path: <name>` on the item. An
 `TriageEngine.prep_specs(slug, path)` builds the pre-gate chain. When it finishes,
 the orchestrator drafts the proposal from `paths/proposals/<path>.md`, sets
 `status: awaiting_approval`, and **sends it**.
+
+- ⚠️ **Gotcha — prep artifacts persist.** Prep stages use the same path workspace
+  convention as fulfillment (`work/<subdir>/<slug>/`) so proposal research,
+  specs, and intermediate assets remain available after approval.
 
 - ⚠️ **Gotcha — delivery ≠ status.** The orchestrator is a headless worker. It
   MUST run `hermes send --to telegram --file <proposal>`; setting the status field
@@ -76,9 +83,10 @@ On `approve`, `proposal_actions.py` reads `paths.<path>.fulfill` and spawns the
 chain via `TriageEngine.fulfillment_specs()`.
 
 - ⚠️ **Gotcha — persistent workspace.** Every fulfillment stage runs with
-  `workspace_kind="dir"` pointed at the SAME `work/<subdir>/<slug>/`. Scratch
-  workspaces are wiped between tasks, which strands the final delivery step. The
-  engine already does this — don't switch it to scratch.
+  `workspace_kind="dir"` pointed at the SAME `work/<subdir>/<slug>/` used by
+  prep for that path. Scratch workspaces are wiped between tasks, which strands
+  the final delivery step. The engine already does this — don't switch it to
+  scratch.
 - ⚠️ **Gotcha — first stage `ready`.** The first fulfillment card has no blocking
   parent so it lands `ready`; the rest chain off it. A child of the open triage
   card would sit in `todo` forever.

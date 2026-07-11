@@ -59,8 +59,8 @@ live at the edges.
    pick a path, then spawns that path's **prep** chain (`engine.prep_specs`).
 5. It drafts a proposal and **sends it to the human** (`hermes send`).
 6. The human replies; the orchestrator shells to `proposal_actions.py`, which
-   reads `paths.<path>.fulfill` and spawns the **fulfillment** chain in a shared
-   persistent workspace (`engine.fulfillment_specs`).
+   reads `paths.<path>.fulfill` and spawns the **fulfillment** chain in the same
+   path persistent workspace convention used by prep (`engine.fulfillment_specs`).
 7. The final stage **delivers** to the human.
 
 ## Where to extend (mechanism, not topic)

@@ -75,7 +75,7 @@ A map of path name → definition. A path is one outcome of routing.
 | `prep[]` | Stages BEFORE the gate. Each `{stage, role}`. Chained sequentially. |
 | `propose.role` | Who drafts + sends the proposal (usually `orchestrator`). |
 | `propose.template` | Markdown proposal template under `paths/proposals/`. |
-| `fulfill[]` | Stages AFTER approval. Each `{stage, role}`. Run in a shared persistent workspace. |
+| `fulfill[]` | Stages AFTER approval. Each `{stage, role}`. Run in the path's shared persistent workspace. |
 | `workspace_subdir` | Bucket under `workspace_root` for this path's per-item dirs (e.g. `builds`). Defaults to the path name. |
 | `scope_rails` | Markdown file (under `paths/rails/`) inlined into each worker's task body — hard limits. |
 | `deliverable_spec` | Markdown file (under `paths/specs/`) inlined into workers — output format. |

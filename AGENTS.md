@@ -74,9 +74,10 @@ These cost real debugging in the system this was extracted from. Preserve them:
 - **Scout profiles need the `kanban` toolset.** Scouts run via cron (not the
   dispatcher), so kanban tools aren't auto-enabled. Without it the scout writes a
   report but silently can't create the intake task.
-- **Post-gate stages must use a persistent `dir` workspace, not scratch.** Scratch
-  dirs are wiped between tasks, stranding the final delivery step. `engine.py`
-  already does this for `fulfill` chains — don't change it to scratch.
+- **Artifact-writing child tasks must use persistent `dir` workspaces, not
+  scratch.** Research lanes write to `work/items/<slug>/`; prep and fulfillment
+  write to the path workspace `work/<subdir>/<slug>/`. Scratch dirs are wiped
+  between tasks, stranding evidence, specs, or final delivery assets.
 - **Setting status ≠ delivering.** The orchestrator is a headless worker; it must
   actually run `hermes send --to telegram` to reach the human. Status fields
   don't notify anyone.

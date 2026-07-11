@@ -146,6 +146,27 @@ class TestEngineSpecs(unittest.TestCase):
             self.assertEqual(s.parents, ["t_root"])  # all parented to triage → run in parallel
         self.assertTrue(any("CLASSIFIER" in s.body for s in specs))  # classifier lane flagged
 
+    def test_research_specs_use_persistent_item_workspace(self):
+        engine = TriageEngine(make_config())
+        specs = engine.research_specs("my-slug", "t_root")
+        for s in specs:
+            self.assertEqual(s.workspace_kind, "dir")
+            self.assertIsNotNone(s.workspace_path)
+            self.assertIn("items", s.workspace_path)
+            self.assertIn("my-slug", s.workspace_path)
+            self.assertIn("PERSISTENT", s.body)
+
+    def test_prep_specs_use_persistent_path_workspace(self):
+        engine = TriageEngine(make_config())
+        specs = engine.prep_specs("my-slug", "build")
+        self.assertEqual([s.title for s in specs], ["synth: my-slug"])
+        for s in specs:
+            self.assertEqual(s.workspace_kind, "dir")
+            self.assertIsNotNone(s.workspace_path)
+            self.assertIn("builds", s.workspace_path)
+            self.assertIn("my-slug", s.workspace_path)
+            self.assertIn("PERSISTENT", s.body)
+
     def test_fulfillment_specs_persistent_workspace(self):
         engine = TriageEngine(make_config())
         specs = engine.fulfillment_specs("my-slug", "build")

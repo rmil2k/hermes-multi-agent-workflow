@@ -62,11 +62,14 @@ class TriageEngine:
         # Items live under the engine's working area by default; override by
         # passing a vault. Production typically points this at the orchestrator
         # profile's vault (see docs/05-pipeline-stages.md).
-        return Path(self.config.workspace_root).resolve() / "vault" / "items"
+        return self.config.resolve_path(self.config.workspace_root) / "vault" / "items"
+
+    def item_workspace_for(self, slug: str) -> Path:
+        return self.config.resolve_path(self.config.workspace_root) / "items" / slug
 
     def workspace_for(self, path_name: str, slug: str) -> Path:
         sub = self.config.get_path(path_name).workspace_subdir or path_name
-        return (Path(self.config.workspace_root).resolve() / sub / slug)
+        return self.config.resolve_path(self.config.workspace_root) / sub / slug
 
     # ----- stage 2: dedup ----- #
 
@@ -99,8 +102,16 @@ class TriageEngine:
 
         They run concurrently; the route step (below) is parented to ALL of them,
         so the kernel fires route the instant the last lane finishes (fan-in).
+        Research writes reusable evidence, so every lane gets a persistent
+        per-item workspace instead of scratch.
         """
         role = self.config.research.profile_role
+        ws_path = str(self.item_workspace_for(slug))
+        ws_note = (
+            f"\nWorkspace: your cwd is the PERSISTENT dir `{ws_path}` (workspace_kind=dir). "
+            "Write research notes, evidence tables, and artifacts here — never a scratch/tmp dir; "
+            "later stages may need this exact path.\n"
+        )
         specs: list[TaskSpec] = []
         for lane in self.config.research.lanes:
             classifier_note = ""
@@ -115,10 +126,13 @@ class TriageEngine:
                 body=(
                     f"Research lane `{lane}` for item `{slug}`.\n"
                     f"Read the item file, do the lane's research, report findings."
+                    f"{ws_note}"
                     f"{classifier_note}"
                 ),
                 role=role,
                 parents=[triage_task_id],
+                workspace_kind="dir",
+                workspace_path=ws_path,
             ))
         return specs
 
@@ -132,7 +146,7 @@ class TriageEngine:
     def prep_specs(self, slug: str, path_name: str) -> list[TaskSpec]:
         """Pre-gate prep stages for a path, chained so each waits on the previous."""
         path = self.config.get_path(path_name)
-        return self._chain(path.prep, slug, path_name, phase="prep", persistent=False)
+        return self._chain(path.prep, slug, path_name, phase="prep", persistent=True)
 
     # ----- stages 9-11: post-gate fulfillment chain ----- #
 
