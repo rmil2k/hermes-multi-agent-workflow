@@ -183,9 +183,19 @@ def names_from_lines(output: str) -> set[str]:
     names: set[str] = set()
     for line in output.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith(("#", "-")):
+        if not stripped or stripped.startswith(("#", "-", "─")):
             continue
-        names.add(stripped.split()[0])
+        parts = stripped.split()
+        if not parts:
+            continue
+        # Hermes table output can prefix current rows with markers like `◆default`
+        # or use a separate bullet column like `●   pain-point`.
+        first = parts[0].lstrip("●◆*")
+        if not first and len(parts) > 1:
+            first = parts[1]
+        if first.lower() in {"slug", "profile", "current", "switch"}:
+            continue
+        names.add(first)
     return names
 
 
@@ -219,17 +229,18 @@ def cmd_doctor(config_path: str | Path = "triage.yaml", *, runner: Runner = run_
     else:
         print("[OK] templates - all referenced local files exist")
 
-    hermes = runner(["hermes", "--version"])
+    hermes_cmd = hermes_bin()
+    hermes = runner([hermes_cmd, "--version"])
     if hermes.returncode != 0:
         failures += 1
         detail = (hermes.stderr or hermes.stdout or "command failed").strip()
-        print(f"[FAIL] Hermes CLI - cannot run `hermes --version`: {detail}")
+        print(f"[FAIL] Hermes CLI - cannot run `{hermes_cmd} --version`: {detail}")
         print(f"\nSummary: {failures} failure(s), {warnings} warning(s)")
         return 1
     version = (hermes.stdout or hermes.stderr).strip().splitlines()[0]
     print(f"[OK] Hermes CLI - {version}")
 
-    board_result = runner(["hermes", "kanban", "boards", "list"])
+    board_result = runner([hermes_cmd, "kanban", "boards", "list"])
     if board_result.returncode != 0:
         failures += 1
         detail = (board_result.stderr or board_result.stdout or "command failed").strip()
@@ -242,7 +253,7 @@ def cmd_doctor(config_path: str | Path = "triage.yaml", *, runner: Runner = run_
             failures += 1
             print(f"[FAIL] board - {cfg.board!r} not found; create it with `hermes kanban boards create {cfg.board}`")
 
-    profile_result = runner(["hermes", "profile", "list"])
+    profile_result = runner([hermes_cmd, "profile", "list"])
     required_profiles = sorted(set(cfg.roles.values()) | {s.profile for s in cfg.sources})
     if profile_result.returncode != 0:
         failures += 1

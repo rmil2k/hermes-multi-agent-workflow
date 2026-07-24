@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -59,7 +60,7 @@ class TestDoctor(unittest.TestCase):
             })
 
             out = StringIO()
-            with redirect_stdout(out):
+            with patch.dict("os.environ", {"HERMES_BIN": "hermes"}), redirect_stdout(out):
                 rc = cmd_doctor(config, runner=runner)
 
             self.assertEqual(rc, 0)
@@ -79,7 +80,7 @@ class TestDoctor(unittest.TestCase):
             })
 
             out = StringIO()
-            with redirect_stdout(out):
+            with patch.dict("os.environ", {"HERMES_BIN": "hermes"}), redirect_stdout(out):
                 rc = cmd_doctor(config, runner=runner)
 
             self.assertEqual(rc, 1)
@@ -94,7 +95,7 @@ class TestDoctor(unittest.TestCase):
             runner = FakeRunner({})
 
             out = StringIO()
-            with redirect_stdout(out):
+            with patch.dict("os.environ", {"HERMES_BIN": "hermes"}), redirect_stdout(out):
                 rc = cmd_doctor(config, runner=runner)
 
             self.assertEqual(rc, 1)
