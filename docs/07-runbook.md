@@ -59,6 +59,21 @@ Also ensure scouts have a web-search backend (a Tavily/Serper/Brave key in their
 Log in each profile's provider once (interactive, human-run). OAuth token stores
 are **per profile** — logging in one profile doesn't cover another.
 
+For X scouts that use `xurl`, the human must register/authenticate the X app in
+the exact HOME used by the scout profile. On this deployment, the `xresearch`
+profile HOME is `/opt/data/profiles/xresearch/home`:
+
+```bash
+HOME=/opt/data/profiles/xresearch/home xurl auth apps add <app-name> --client-id <client-id> --client-secret <client-secret>
+HOME=/opt/data/profiles/xresearch/home xurl auth oauth2 --app <app-name> <x-username>
+HOME=/opt/data/profiles/xresearch/home xurl auth default <app-name> <x-username>
+HOME=/opt/data/profiles/xresearch/home xurl auth status
+```
+
+Do not paste X secrets into an agent chat. Agents should only verify with
+`xurl auth status`; if no app/token is present, they should write a blocked sweep
+report rather than fabricate candidates.
+
 ## 7. Configure the gate channel
 
 For Telegram: set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS=<your id>`, and a

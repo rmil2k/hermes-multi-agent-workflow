@@ -8,16 +8,20 @@ Requires PyYAML (engine.config imports it). See requirements.txt.
 """
 from __future__ import annotations
 
+import gc
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.config import ConfigError, TriageConfig  # noqa: E402
+from engine.dedup import similar_items  # noqa: E402
 from engine.engine import TriageEngine  # noqa: E402
+from engine.item_vault import ItemVault  # noqa: E402
 from engine.routing import route_from_classification  # noqa: E402
 from engine.scoring import score_from_breakdown  # noqa: E402
 
@@ -135,6 +139,74 @@ class TestRouting(unittest.TestCase):
         cfg = make_config()
         with self.assertRaises(ValueError):
             route_from_classification("weird", cfg.route)
+
+
+class TestDedup(unittest.TestCase):
+    def test_similar_items_does_not_load_full_item_files(self):
+        class NoFullLoadVault(ItemVault):
+            def load(self, slug: str):  # pragma: no cover - should never be called
+                raise AssertionError("dedup should use bounded item previews, not full vault.load()")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "existing.md").write_text(
+                "---\nslug: existing\ntitle: Matching Candidate\n---\n"
+                + ("large unrelated body\n" * 1000),
+                encoding="utf-8",
+            )
+
+            matches = similar_items("Matching Candidate", NoFullLoadVault(root), top_k=1)
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].slug, "existing")
+        self.assertGreater(matches[0].score, 0)
+
+    def test_similar_items_keeps_only_top_k_matches_in_memory(self):
+        class TrackingMatch:
+            live = 0
+            max_live = 0
+
+            def __init__(self, slug: str, score: float, decision: str):
+                self.slug = slug
+                self.score = score
+                self.decision = decision
+                type(self).live += 1
+                type(self).max_live = max(type(self).max_live, type(self).live)
+
+            def __del__(self):
+                type(self).live -= 1
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for index in range(100):
+                (root / f"item-{index:03d}.md").write_text(
+                    f"---\nslug: item-{index:03d}\ntitle: candidate {index}\n---\nbody",
+                    encoding="utf-8",
+                )
+
+            with patch("engine.dedup.Match", TrackingMatch):
+                matches = similar_items("candidate body", ItemVault(root), top_k=3)
+
+        self.assertEqual(len(matches), 3)
+        self.assertLessEqual(TrackingMatch.max_live, 5)
+        del matches
+        gc.collect()
+
+    def test_similar_items_ignores_backup_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "duplicate.md.bak").write_text(
+                "---\nslug: duplicate\ntitle: Backup Only Duplicate\n---\nBackup Only Duplicate",
+                encoding="utf-8",
+            )
+            (root / "current.md").write_text(
+                "---\nslug: current\ntitle: Unrelated Current Item\n---\nSomething else",
+                encoding="utf-8",
+            )
+
+            matches = similar_items("Backup Only Duplicate", ItemVault(root), top_k=3)
+
+        self.assertNotIn("duplicate", {m.slug for m in matches})
 
 
 class TestEngineSpecs(unittest.TestCase):

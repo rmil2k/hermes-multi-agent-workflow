@@ -20,8 +20,10 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
-from .item_vault import ItemVault
+from .frontmatter import parse_mapping
+from .item_vault import ItemVault, SLUG_RE
 
 # Defaults match triage.yaml's `dedup:` block. The token-cosine fallback runs
 # COLDER than embedding cosine for differently-worded-but-same-topic text, hence
@@ -74,6 +76,10 @@ def classify(score: float, duplicate_threshold: float = DUPLICATE_THRESHOLD, pos
     return "new"
 
 
+MAX_FRONTMATTER_BYTES = 64 * 1024
+MAX_BODY_CHARS = 64 * 1024
+
+
 @dataclass
 class Match:
     slug: str
@@ -84,6 +90,29 @@ class Match:
 def _item_text(frontmatter: dict, body: str) -> str:
     parts = [str(frontmatter.get("title", "")), body]
     return "\n".join(p for p in parts if p)
+
+
+def _is_backup_file(path: Path) -> bool:
+    return path.name.endswith(".bak") or ".bak" in path.suffixes
+
+
+def _bounded_item_text(path: Path, *, max_frontmatter_bytes: int = MAX_FRONTMATTER_BYTES, max_body_chars: int = MAX_BODY_CHARS) -> str:
+    """Return title + a bounded body preview without reading the whole item file."""
+    read_limit = max_frontmatter_bytes + max_body_chars + len("\n---\n")
+    with path.open("rb") as handle:
+        raw = handle.read(read_limit)
+    text = raw.decode("utf-8", errors="replace")
+
+    frontmatter: dict = {}
+    body = text[:max_body_chars]
+    if text.startswith("---\n"):
+        search_area = text[: max_frontmatter_bytes + len("\n---\n")]
+        end = search_area.find("\n---\n", 4)
+        if end != -1:
+            frontmatter = parse_mapping(text[4:end])
+            body = text[end + 5 : end + 5 + max_body_chars]
+
+    return _item_text(frontmatter, body)
 
 
 def similar_items(
@@ -99,17 +128,27 @@ def similar_items(
     three-way decision (`duplicate` / `possible` / `new`).
     """
     cand = _vector(candidate_text)
+    if top_k <= 0:
+        return []
     scored: list[Match] = []
-    for path in sorted(vault.root.glob("*.md")):
-        slug = path.stem
-        try:
-            item = vault.load(slug)
-        except (ValueError, FileNotFoundError):
+    for path in sorted(vault.root.iterdir()):
+        if path.is_symlink() or not path.is_file() or path.suffix != ".md" or _is_backup_file(path):
             continue
-        score = cosine(cand, _vector(_item_text(item.frontmatter, item.body)))
+        slug = path.stem
+        if not SLUG_RE.match(slug):
+            continue
+        try:
+            existing_text = _bounded_item_text(path)
+        except OSError:
+            continue
+        score = cosine(cand, _vector(existing_text))
         scored.append(Match(slug=slug, score=round(score, 4), decision=classify(score, duplicate_threshold, possible_threshold)))
-    scored.sort(key=lambda m: m.score, reverse=True)
-    return scored[:top_k]
+        # Keep memory proportional to the requested result count, not vault size.
+        # Paths are visited in slug order, so the secondary key preserves the
+        # previous deterministic ordering for equal scores.
+        scored.sort(key=lambda m: (-m.score, m.slug))
+        del scored[top_k:]
+    return scored
 
 
 def best_match(candidate_text: str, vault: ItemVault) -> Match | None:

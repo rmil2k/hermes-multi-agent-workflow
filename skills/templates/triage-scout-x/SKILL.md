@@ -21,6 +21,7 @@ Find posts about AI agent workflows breaking silently, wasted hours, and blocked
 
 ## Procedure
 
+0. Verify X search access before the sweep. Prefer `xurl auth status` and `xurl search`; if `xurl` is missing, install it into the active profile/home PATH without handling secrets. If `xurl auth status` shows no registered app/token, do not attempt to register credentials inside an agent session. Write a blocked sweep report with the failed commands/errors and still create the single intake Kanban task pointing at that report.
 1. Search X using the query above (respect rate limits).
 2. For each distinct candidate:
    - One-line **claim**
@@ -29,6 +30,9 @@ Find posts about AI agent workflows breaking silently, wasted hours, and blocked
    - One line on **why it may matter**
 3. Write report to:
    `${HERMES_PROFILE_DIR}/vault/intake/<UTC-timestamp>-x.md`
+   Set `status: completed` only after a real X search succeeds. If access is
+   unavailable, set `status: blocked`; the launcher preserves the report and
+   escalation task but returns nonzero so monitoring cannot go false-green.
 4. Create ONE intake Kanban task with the real Hermes CLI:
    ```bash
    /opt/hermes/bin/hermes kanban --board pain-point create "intake: x <UTC-date>" \
@@ -43,6 +47,7 @@ Find posts about AI agent workflows breaking silently, wasted hours, and blocked
 ```
 source: x
 captured_at: <UTC timestamp>
+status: completed
 
 ## Candidate: <title>
 Claim: <one-line claim>

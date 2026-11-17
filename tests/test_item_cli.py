@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cli.triage import cmd_item_list, cmd_item_show, cmd_smoke_test  # noqa: E402
 from engine.item_vault import ItemVault  # noqa: E402
+from engine.frontmatter import dumps_frontmatter, parse_frontmatter  # noqa: E402
 from tests.test_engine_core import make_config  # noqa: E402
 
 
@@ -24,7 +25,43 @@ def write_config(root: Path) -> Path:
     return path
 
 
-class TestItemEventsAndCli(unittest.TestCase):
+class TestItemCLI(unittest.TestCase):
+    def test_frontmatter_quoted_string_round_trip_is_stable(self):
+        original = {"quote": 'contains "quotes" and \\\\ escaped text'}
+        first = dumps_frontmatter(original, "body")
+        parsed, body = parse_frontmatter(first)
+        second = dumps_frontmatter(parsed, body)
+        self.assertEqual(parsed, original)
+        self.assertEqual(second, first)
+
+    def test_append_source_suppresses_only_exact_duplicates(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = ItemVault(Path(td) / "items")
+            vault.create_item(slug="source-test", title="Source Test", sources=[], body="body")
+            vault.append_source("source-test", {"url": "https://example.com", "quote": "first"})
+            vault.append_source("source-test", {"url": "https://example.com", "quote": "first"})
+            vault.append_source("source-test", {"url": "https://example.com", "quote": "changed"})
+            item = vault.load("source-test")
+            self.assertEqual(len(item.frontmatter["sources"]), 2)
+
+    def test_load_rejects_oversized_item_before_reading(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = ItemVault(Path(td) / "items")
+            path = vault.root / "oversized.md"
+            with path.open("wb") as handle:
+                handle.truncate(8 * 1024 * 1024 + 1)
+            with self.assertRaisesRegex(ValueError, "Refusing to read oversized"):
+                vault.load("oversized")
+
+    def test_repeated_events_preserve_audit_history(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = ItemVault(Path(td) / "items")
+            vault.create_item(slug="event-idempotence", title="Event", sources=[], body="body")
+            vault.append_event("event-idempotence", "checked", result="same")
+            vault.append_event("event-idempotence", "checked", result="same")
+            item = vault.load("event-idempotence")
+            self.assertEqual(len(item.frontmatter["events"]), 2)
+
     def test_item_vault_append_event_persists_chronological_events(self):
         with tempfile.TemporaryDirectory() as td:
             vault = ItemVault(Path(td) / "items")

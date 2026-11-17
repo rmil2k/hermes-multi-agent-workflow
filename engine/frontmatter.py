@@ -39,6 +39,16 @@ def parse_scalar(value: str) -> Any:
     except ValueError:
         pass
     if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        # The writer uses ``repr`` for strings that need quoting.  Merely
+        # stripping the outer quotes leaves escape sequences escaped; every
+        # subsequent load/save cycle then doubles the backslashes and can grow
+        # a small item into a multi-gigabyte file.  Decode the repr instead.
+        try:
+            parsed = ast.literal_eval(value)
+            if isinstance(parsed, str):
+                return parsed
+        except (SyntaxError, ValueError):
+            pass
         return value[1:-1]
     return value
 
